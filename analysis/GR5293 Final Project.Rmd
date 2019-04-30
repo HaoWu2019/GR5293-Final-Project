@@ -1,0 +1,505 @@
+---
+title: "GR5293 Final Project"
+author: "Hao Wu(hw2664) & Haofeng Chen(hc2962)"
+date: "4/21/2019"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(reshape2)
+library(naniar)
+library(ggplot2)
+library(ggthemes)
+```
+
+## I. Introduction
+
+Daylight Saving Time (DST), or daylight time (U.S) and summer time (U.K), was invented by New Zealand astronomer George Hudson in 1895. By adjusting clocks forward one hour close to the start of spring and adjust them backward in the fall to standard time, DST has made significant impacts of our daily lives in various areas. Currently, most areas in North America and Europe and some areas in the Middle East implement DST, whereas most of the countries in Africa and Asia do not. The picture below shows the countries or continents around the world that implement DST. 
+
+```{r}
+knitr::include_graphics('DST_Countries_Map.png')
+```
+
+However, the continent or countries set their clock for DST differently. In Europe, the European Union implemented its DST via a coordinated shift, allowing countries in Coordinated Universal Time (UTC) to shift time at 1 am, countries in Central European Time (CET) to shift time at 2 am, and countries in Eastern European Time (EET) to shift at 3 am. In the U.S, people adjust their clock forward/backward at 2 am regardless of what timezones you are in. In addition, the dates on which clocks are to be shifted are also different among countries that implement DST. In the U.S, people set their time forward on the second Sunday in March and backward on the first Sunday in November after the implementation of The Energy Policy Act of 2005 in 2007. 
+
+DST has caused numerous of controversy since its implementation. Proponents of DST state that the implementation of DST could encourage people to spend more daytime outdoor, which is ideal for physical and psychological health, reducing energy consumption. Noticed that Germany was the first country to implement DST during World War I, with the goal to reduce energy consumption. However, opponents argue that the implementation of DST could, in fact, cause substantial health issues and fail to reduce energy consumption. Studies show that DST is associated with increases in heart attacks and car accidents after the Sunday following the implementation of DST, as people lost one hour of sleeping time due to the time shifting. Recently, California voters approved a measure allowing the state to make DST year-round, canceling the shift every March and November. [Detailed Article](https://www.theverge.com/2018/11/7/18071898/california-permanent-daylight-saving-time)
+
+In our studies, we are interested in seeing whether the implementation of DST could, in fact, affect the number of car accidents and the consumptions of electricity within the relative time period in the U.S. In particular, we will compare car accident and electricity consumption data.
+
+## II. Description of the data source
+
+There are two datasets that we would use in our project. Chen was responsible for collecting electricity consumption data and Wu was responsible for car accidents searching. After spending hours searching for data online, we were able to find our data from two separate government organization websites. 
+
+ * The dataset, which records the monthly electricity consumption in the U.S., comes from The U.S. Energy Information Administration. In this dataset, we have monthly total electricity consumption data (in Megawatthours) for each state from 1990 to 2018, and the data also breaks down the electricity consumption in residential, commercial, industrial, transportation, and other fields. Since the current DST period was set in 2007, we decide to use the monthly electricity consumption data from 2010 to 2017 in our project. Each row of the data represents a certain state electricity consumption in residential, commercial, industrial, transportation, other, and total fields in a certain month. The only problem we have with this dataset is that all the electricity consumption in the transportation field are missing, but this will not be a major issue for our study since we would only use the total electricity consumption field. 
+
+ * The dataset, which records the numbers of car accident data, comes from NHTSA (National Highway Traffic Safety Administration). Similarly, we will focus on data from 2010 to 2017. In this dataset, each calendar year has its own CSV file, and each row in those CSV files represents one car accident information. We will use four variables in each file.  The STATE variable represents where the car accident happened. The data collectors used a numeric attribute code to represent each state name. For example, 1 stands for Alabama. For more detail regarding the numeric representation, we can refer to page 25 of FARS Analytical Users Manual 1975-2017. The YEAR, MONTH, DAY variables record when the car accident happened. The problem with the car accident dataset is quite straightforward. The dataset may not include all the car accidents happened within the states since it is impossible to record all the car accident for the transportation department. For car accidents that do not involve injuries, people are likely to settle privately without getting the polices involved; therefore, it is also impossible for the government organization to record all those data. Due to the incompleteness of the dataset, after realizing the infeasibility of using daily car accidents data, we decide to use the monthly data instead. Basically, we count the number of car accidents happened in one month and make a comparison between months. In addition, we need to map the state numeric attribute code to the actual state name.
+
+## III. Description of data import/cleaning/transformation
+
+```{r}
+# The following code is data cleaning for car accident
+
+acci10 <- read.csv("car_accident2010.csv", header = TRUE, as.is = TRUE)
+acci11 <- read.csv("car_accident2011.csv", header = TRUE, as.is = TRUE)
+acci12 <- read.csv("car_accident2012.csv", header = TRUE, as.is = TRUE)
+acci13 <- read.csv("car_accident2013.csv", header = TRUE, as.is = TRUE)
+acci14 <- read.csv("car_accident2014.csv", header = TRUE, as.is = TRUE)
+acci15 <- read.csv("car_accident2015.csv", header = TRUE, as.is = TRUE)
+acci16 <- read.csv("car_accident2016.csv", header = TRUE, as.is = TRUE)
+acci17 <- read.csv("car_accident2017.csv", header = TRUE, as.is = TRUE)
+
+#convert state code into state name
+sn <- c(state.abb[1:8],"DC",state.abb[9:50])
+sn_code <- unique(acci10$STATE.N.16.0)
+#from 2010 to 2014
+sn_df_10_14 <- data.frame(STATE.N.16.0=sn_code, state=sn, stringsAsFactors = FALSE)
+#from 2015 to 2017
+sn_df_15_17 <- data.frame(STATE=sn_code, state=sn, stringsAsFactors = FALSE)
+
+#add the state name to each dataframe according to the state code
+acci10 <- left_join(acci10,sn_df_10_14)
+acci11 <- left_join(acci11,sn_df_10_14)
+acci12 <- left_join(acci12,sn_df_10_14)
+acci13 <- left_join(acci13,sn_df_10_14)
+acci14 <- left_join(acci14,sn_df_10_14)
+acci15 <- left_join(acci15,sn_df_15_17)
+acci16 <- left_join(acci16,sn_df_15_17)
+acci17 <- left_join(acci17,sn_df_15_17)
+
+# Create a modulo for the left join purpose
+state <- unique(acci10$state)
+modulo_10_14 <- data.frame(state=rep(state,each=12),MONTH.N.16.0=rep(1:12,51), stringsAsFactors = FALSE)
+modulo_15_17 <- data.frame(state=rep(state,each=12),MONTH=rep(1:12,51), stringsAsFactors = FALSE)
+var_names <- c("STATE", "MONTH", "COUNTS")
+
+# 2010 car accident
+data10 <- acci10 %>%
+  group_by(state,MONTH.N.16.0) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_10_14,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2010)
+
+# 2011 car accident
+data11 <- acci11 %>%
+  group_by(state,MONTH.N.16.0) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_10_14,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2011)
+
+# 2012 car accident
+data12 <- acci12 %>%
+  group_by(state,MONTH.N.16.0) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_10_14,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2012)
+
+# 2013 car accident
+data13 <- acci13 %>%
+  group_by(state,MONTH.N.16.0) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_10_14,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2013)
+  
+# 2014 car accident
+data14 <- acci14 %>%
+  group_by(state,MONTH.N.16.0) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_10_14,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2014)
+
+# 2015 car accident
+data15 <- acci15 %>%
+  group_by(state, MONTH) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_15_17,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2015)
+
+# 2016 car accident
+data16 <- acci16 %>%
+  group_by(state, MONTH) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_15_17,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2016)
+
+# 2017 car accident
+data17 <- acci17 %>%
+  group_by(state, MONTH) %>%
+  summarise(COUNTS = n()) %>%
+  left_join(modulo_15_17,.) %>%
+  setNames(var_names) %>%
+  mutate(YEAR = 2017)
+
+car_comb_data <- rbind(data10,data11,data12,data13,data14,data15,data16,data17)
+############################################################
+
+# The following code is data cleaning for electricity consumption
+
+elec <- read.csv("electricity_consumption.csv",header = TRUE, as.is = TRUE)
+colnames(elec) = c("Year","Month","State","Data Status","Residental_Revenue","Residental_Sales","Residental_Customers","Residental_Price","Commericial_Revenue","Commericial_Sales","Commericial_Customers","Commericial_Price","Industrial_Revenue","Industrial_Sales","Industrial_Customers","Industrial_Price","Transportation_Revenue","Transportation_Sales","Transportation_Customers","Transportation_Price","Other_Revenue","Other_Sales","Other_Customers","Other_Price","Total_Revenue","Total_Sales","Total_Customers","Total_Price")
+
+# Remove the the rows that we don't need 
+elec = elec[c(-1,-2,-nrow(elec)),]
+
+## We are only looking at total sales data from 2010 to 2017
+elec$Year <- parse_number(elec$Year)
+elec$Month <- parse_number(elec$Month)
+elec$Total_Sales <- parse_number(elec$Total_Sales)
+elec <- elec[elec$Year >= 2010 & elec$Year <= 2017,]
+elec <- elec[,c("Year","Month","State","Total_Sales")]
+
+## Rescale total sales annually and get the avg number of electricity usage for each month
+elec$Month <- as.character(elec$Month)
+elec$Year <- as.character(elec$Year)
+elec <- dcast(elec, Year+State ~ Month)
+elec$`1` <- elec$`1` / 31
+elec$`2` <- elec$`2` / 28
+elec$`3` <- elec$`3` / 31
+elec$`4` <- elec$`4` / 30
+elec$`5` <- elec$`5` / 31
+elec$`6` <- elec$`6` / 30
+elec$`7` <- elec$`7` / 31
+elec$`8` <- elec$`8` / 31
+elec$`9` <- elec$`9` / 30
+elec$`10` <- elec$`10` / 31
+elec$`11` <- elec$`11` / 30
+elec$`12` <- elec$`12` / 31
+
+# Subset the column we want
+elec[3:14] <- t(apply(elec[3:14], 1,scale))
+
+# Transform to tidy form
+elec_all <- elec %>%
+  gather(key = "Month", value = "Total_sales", -c("Year","State"))
+```
+
+Given the fact that The Energy Policy Act of 2005 was not implemented until 2007, we decided to use data from 2010 to 2017 as discussed in part II. In addition, we will break down our data into two periods. The first period is called Daylight Saving Starting period, which contains data in February, March, and April. The second period is called Daylight Saving Ending period, which contains data in October, November, and December. Except those 6 months, the DST may no longer be a significant factor for the changing number of car accidents and the electricity consumption between months, since people may already get used to the time change and their bodies gradually adapt the circadian rhythm.
+
+ * For the car accident data, we have eight separate files for each year. We count the number of car accidents happened in each state of each month for the eight files, and then combine the data together. In order to make the data comparable between months, we should divide the count by the number of days of the corresponding month and use the average number of car accidents for each state. Finally, we need to filter out the data we want, which is the two periods discussed above, and transform the data into tidy form for plotting purpose. 
+
+ * For the electricity consumption data, based on the structure of the data, we need to remove the top two rows, which are all sub column names, and the last rows, which is a description line. Afterward, given the fact that different month has different number of dates, we first divide the electricity usage in each month by the number of days to get the average electricity usage number. Then, we scale our total usage annually for each state and breakdown our data into two periods. Eventually, we transform the data into tidy form for plotting purpose.
+
+
+## IV. Analysis of missing values
+
+For this part, since the **extracat** package is no longer available in R, then we choose to use gg_miss_var() function from **naniar** package to visualize the missing value of car accident dataset and electricity consumption dataset.
+
+### Analyzing missing value for car accident
+
+```{r}
+gg_miss_var(car_comb_data, facet = YEAR)
+```
+
+By plotting the number of missing values of each variable for each year, we can see that all the years have missing values except for 2017, and 2012 has the largest number of missing values, which is 5, for the COUNTS variable. The missing values may due to the incompleteness of the data set and some car accidents may not be recorded by the police department for some states. After discussions, we have two proposed ideas: 
+
+1. Set the missing value to 0 in the data.
+
+2. Take the average count of previous and next year of the same month to replace the missing value. 
+
+Eventually, we decide to set the missing values to 0, since without setting them to 0, we may encounter extreme scenarios. For example, the previous year of that month may have a large number of car accidents, which may be abnormal from past experiences.
+
+```{r}
+#This chunk aims to fill in the NA with 0 and transform data to desired form
+#Set missing values to 0
+car_comb_data$COUNTS[is.na(car_comb_data$COUNTS)] <- 0
+car_comb_data$MONTH <- as.character(car_comb_data$MONTH)
+#transform data from tidy to messy
+car_trans_comb <- dcast(car_comb_data, YEAR+STATE~MONTH, value.var = "COUNTS")
+
+#divide the correponding number of days of each month, to make them comparable
+car_trans_comb$`1` <- car_trans_comb$`1`/31
+car_trans_comb$`2` <- car_trans_comb$`2`/28
+car_trans_comb$`3` <- car_trans_comb$`3`/31
+car_trans_comb$`4` <- car_trans_comb$`4`/30
+car_trans_comb$`5` <- car_trans_comb$`5`/31
+car_trans_comb$`6` <- car_trans_comb$`6`/30
+car_trans_comb$`7` <- car_trans_comb$`7`/31
+car_trans_comb$`8` <- car_trans_comb$`8`/31
+car_trans_comb$`9` <- car_trans_comb$`9`/30
+car_trans_comb$`10` <- car_trans_comb$`10`/31
+car_trans_comb$`11` <- car_trans_comb$`11`/30
+car_trans_comb$`12` <- car_trans_comb$`12`/31
+car_tidy <- car_trans_comb %>%
+  gather(key=MONTH, value=COUNTS, -c(YEAR,STATE))
+```
+
+### Analyzing missing value for electricity consumption
+
+```{r}
+gg_miss_var(elec_all, facet = Year)
+```
+
+From the plot above, there is no missing value in the electricity consumption dataset.
+
+## V. Results
+
+After consideration, We decide only to use Arizona, New Mexico, and Oklahoma as the main analysis states of this project for the following three reasons:
+
+ 1. We tried to use parallel coordinate plots to plot all the states within the same graph. After trying different arguments in the plot function, such as, color, scale, and transparency, we were still not able to get a clear picture of what the data looks like and how the counts or values change between months because there are too many lines on the plot, making the plot pretty messy. We will show the parallel coordinate plot for all the states in the interactive part using Tableau.
+
+ 2. Arizona is a state without implementing DST, and the other two states are states with DST. This can allow us to decide whether the changes in the number of car accidents or electricity consumption between months are a result of the implementation of DST. That is to say, if the changes between months are in the same direction among the three states, we may not conclude that the implementation of DST leads to these changes. Some other factors may trigger the changes instead.
+
+ 3. Arizona, New Mexico, and Oklahoma have a close latitude range (Arizona: 34.0489° N, 111.0937° W, New Mexico: 34.5199° N, 105.8701° W, and Oklahoma:35.0078° N, 97.0929° W), indicating that the three states have similar amount of sunlight time throughout the year. Especially for Arizona and New Mexico, the two states locate adjacent to each other and have similar land areas. 
+
+We will use [boxplot](https://en.wikipedia.org/wiki/Box_plot) and [parallel coordinate plot](https://en.wikipedia.org/wiki/Parallel_coordinates) to analyze the data. (The colors for the plots are color-vision-deficiency-friendly)
+
+ * For boxplot, we plot the number of car accidents or electricity consumption of each three months and make a facet on the three states. Each of the nine boxplots includes the number of car accidents or electricity consumption from 2010 to 2017. In our data, we have three dimensions, including year, month and state, we decide to use boxplots to take an initial view of how the distributions of the data look like within the same month and same state throughout the eight years and show how the median number of car accidents or electricity consumption of eight years changes within each state throughout the three months. It also allows us to compare the overall dataset across the states. Notice that the boxplots are interactive plot too, as we use the mouse to hover over one of nine boxplots, it will show the summary of the data, including min, median, max. It can provide us with a better perception of how the median changes over months, which we cannot distinguish the changes if the median of two months is similar by only observing the static boxplot.
+ 
+ * For parallel coordinate plot, we fix the year dimension and state dimension, and then plot the linear trend of each state of the period we want to observe. To be more specific, we treat each year as one facet for the graph and plot a line for each state over the three targeted months. The plot can let us further exam how the number of car accidents or electricity consumption change over the three months with respect to each year.
+
+### Car Accidents
+
+#### Analyzing the start of DST
+
+```{r}
+car_dst_start <- filter(car_tidy, STATE %in% c("AZ","NM","OK"), MONTH %in% c("2","3","4"))
+colnames(car_dst_start) <- c("Year", "State", "Month","Counts")
+g_car_start <- ggplot(car_dst_start, aes(x=Month, y=Counts, fill=State)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Feb, Mar and Apr") + 
+  scale_x_discrete(labels = c("Feb","Mar","Apr")) +
+  ylab("Ave # of Car Accidents") +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  theme_grey(15) +
+  theme(plot.title=element_text(hjust = 0.5)) 
+plotly::ggplotly(g_car_start) %>% plotly::layout(boxmode = "group")
+```
+
+From the boxplot above,
+
+ * Firstly, we can see that Arizona has the greatest number of car accidents over the eight years among the states and New Mexico has the least number of car accidents over the eight years among the three states. 
+ 
+ * To look further, we can see that the median number of car accidents among the three states follows the same pattern over the three months. Specifically, the median number of car accidents of each state is smaller in February than in March, and the median number of car accidents of each state is larger in March than in April. 
+ 
+ * Based on the information we obtain, although there is an increasing trend in the number of car accidents from February to March, it is hard to say that the start of DST, which means we lose an hour of sleeping time, is the main effect of the increment because the state without DST, Arizona, also shares the same pattern over the three months. Thus we may conclude that DST may just be a trivial factor of the increasing number of car accidents and some other factors may have a stronger influence on that for all the states no matter whether the states have DST or not. We need to further consider other factors.
+
+
+```{r}
+ggplot(car_dst_start, aes(x=Month, y=Counts, group=State)) +
+  geom_line(aes(color=State)) +
+  geom_point(aes(shape=State, color=State)) +
+  scale_x_discrete(labels = c("Feb","Mar","Apr")) +
+  facet_wrap(~Year) +
+  ggtitle("PCP of Feb, Mar and Apr") + 
+  ylab("Ave # of Car Accidents") +
+  scale_color_colorblind() +
+  theme_grey(13) +
+  theme(plot.title=element_text(hjust = 0.5))
+```
+
+From the parallel coordinate plot above,
+
+ * For the state without DST, Arizona, the changing pattern of the number of car accidents increases from February to March and then decreases from March to April for the years from 2010 to 2015; however for the years from 2016 to 2017, the number of car accidents decreases from February to March and then increase from March to April. 
+ 
+ * For the state with DST, New Mexico, and Oklahoma, the number of car accidents in Oklahoma always increases from February to March over the eight years, but the varying of the number of car accidents in New Mexico does not have a consistent pattern from February to March over the eight years. For the period from March to April, these two states do not have a consistent pattern over the eight years.
+ 
+ * Based on the information we obtain, we can conclude that DST may be one of the significant reasons for the increasing number of car accidents in Oklahoma at the start of DST. We cannot explain the situation in New Mexico based on our dataset. There may exist some other important factors to make the number of car accidents increase from February to March for most of the years. 
+
+
+#### Analyzing the end of DST
+
+```{r}
+car_dst_end <- filter(car_tidy, STATE %in% c("AZ","NM","OK"), MONTH %in% c("10","11","12"))
+colnames(car_dst_end) <- c("Year", "State", "Month","Counts")
+g_car_end <- ggplot(car_dst_end, aes(x=Month, y=Counts, fill=State)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Oct, Nov and Dec") +
+  scale_x_discrete(labels = c("Oct","Nov","Dec")) +
+  ylab("Ave # of Car Accidents") +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  theme_grey(15) +
+  theme(plot.title=element_text(hjust = 0.5))
+plotly::ggplotly(g_car_end) %>% plotly::layout(boxmode = "group")
+```
+
+From the boxplot above,
+
+ * Firstly, just like the situation at the start of DST, we can see Arizona has the greatest number of car accidents over the eight years among the states and New Mexico has the least number of car accidents over the eight years among the states. 
+ 
+ * Secondly, we can see that unlike the start of DST, at the end of DST, New Mexico and Oklahoma, the states with DST, do not share the same median pattern with Arizona, the states without DST. Specifically, For New Mexico and Oklahoma, the median number of car accidents is larger in October than in November, and the median number of car accidents in November is pretty similar to that in December. For Arizona, the boxplots tell a different story. the median number of car accidents is smaller in October than in November, and the median number of car accidents is larger in November than in December.
+ 
+ * Based on the information we obtain, at the end of DST, people will have one more hour of sleeping time. the median number of car accidents over the 8 years has an efficient reduction for the states with DST. Thus we may conclude that the end of DST may have a substantial influence on decreasing the number of car accidents.
+
+
+```{r}
+ggplot(car_dst_end, aes(x=Month, y=Counts, group=State)) +
+  geom_line(aes(color=State)) +
+  geom_point(aes(shape=State, color=State)) +
+  scale_x_discrete(labels = c("Oct","Nov","Dec")) +
+  facet_wrap(~Year) +
+  ggtitle("PCP of Oct, Nov and Dec") + 
+  ylab("Ave # of Car Accidents") +
+  scale_color_colorblind() +
+  theme_grey(13) +
+  theme(plot.title=element_text(hjust = 0.5))
+```
+
+From the parallel coordinate plot above,
+
+ * For the state without DST, Arizona, the changing pattern of the number of car accidents increases from October to November and then decreases from November to December in 2010, 2011, 2013, 2014, 2015, and 2016; however the number of car accidents decreases from October to November and then increase from November to December in 2012 and 2017.
+ 
+ * For the state with DST, New Mexico, and Oklahoma, the number of car accidents in New Mexico decreases from October to November for most of eight years, but the varying of the number of car accidents in Oklahoma does not have a consistent pattern from October to November over the eight years. For the period from November to December, these two states do not have a consistent pattern over the eight years.
+ 
+ * Based on the information we obtain, we can conclude that the DST may be a significant reason for the decreasing number of car accidents in New Mexico at the end of DST. We cannot explain the situation in Oklahoma based on our dataset. There may exist some important factors to make the number of car accidents decrease from October to November for most of the years. 
+
+### Electricity Consumption
+
+#### Analyzing the start of DST
+
+```{r}
+elec_dst_start <- filter(elec_all, State %in% c("AR", "NM", "OK"), Month %in% c("2","3","4"))
+g_elec_start <- ggplot(elec_dst_start, aes(x=Month, y=Total_sales, fill=State)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Feb, Mar and Apr") + 
+  ylab("Scaled Ave Total Sales") +
+  scale_x_discrete(labels = c("Feb","Mar","Apr")) +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  theme_grey(15) +
+  theme(plot.title=element_text(hjust = 0.5))
+plotly::ggplotly(g_elec_start) %>% plotly::layout(boxmode = "group")
+```
+
+From the boxplot above,
+
+ * At first, we can see that the variance of the median electricity consumption over the eight years decreases from February to March and from March to April for each state.
+ 
+ * To look further, we can see that the median electricity consumption of the three states is larger in February than in March. For New Mexico, unlike the other two states, the median electricity consumption is smaller in March than in April.
+ 
+ * Based on the information we obtain, although there is a decreasing trend of the electricity consumption from February to March, it is hard to say that the start of DST is the main effect of the decrement because the state without DST, Arizona, also shares the same pattern over the three months. Thus we may conclude that the DST may just be a trivial factor of the decreasing electricity consumption and some other factors may have a stronger influence on decreasing electricity consumption. For example, the weather becomes warm from February to March. People may reduce the usage of heating, which can lead to a huge reduction in electricity consumption.
+
+
+```{r}
+ggplot(elec_dst_start, aes(x=Month, y=Total_sales, group=State)) +
+  geom_line(aes(color=State)) +
+  geom_point(aes(shape=State, color=State)) +
+  scale_x_discrete(labels = c("Feb","Mar","Apr")) +
+  facet_wrap(~Year) +
+  ggtitle("PCP of Feb, Mar and Apr") + 
+  ylab("Scaled Ave Total Sales") +
+  scale_color_colorblind() +
+  theme_grey(13) +
+  theme(plot.title=element_text(hjust = 0.5))
+```
+
+From the parallel coordinate plot above,
+
+ * For the state without DST, Arizona, the changing pattern of electricity consumption decreases from February to April over the eight years.
+ 
+ * For the state with DST, New Mexico and Oklahoma, the electricity consumption in Oklahoma always decreases from February to March over the eight years, but the electricity consumption in New Mexico decreases from February to March and then increases from March to April over the eight years. Basically, electricity consumption will decrease from February to March for these two states.
+ 
+ * Based on the information we obtain, we can conclude that the DST may not be a significant reason for the decreasing electricity consumption in the states with DST, since for the state without DST, the graph also shows a decreasing pattern. Just as the example we discussed in the previous boxplot, the temperature increment may have a substantial influence on the reduction of electricity usage.
+
+#### Analyzing the end of DST
+
+```{r}
+elec_dst_end <- filter(elec_all, State %in% c("AR", "NM", "OK"), Month %in% c("10","11","12"))
+g_elec_end <- ggplot(elec_dst_end, aes(x=Month, y=Total_sales, fill=State)) +
+  geom_boxplot() +
+  ggtitle("Boxplot of Oct, Nov and Dec") + 
+  ylab("Scaled Ave Total Sales") +
+  scale_x_discrete(labels = c("Oct","Nov","Dec")) +
+  scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9")) +
+  theme_grey(15) +
+  theme(plot.title=element_text(hjust = 0.5))
+plotly::ggplotly(g_elec_end) %>% plotly::layout(boxmode = "group")
+```
+
+From the boxplot above,
+
+ * At first, we can see that the variance of the median electricity consumption over the eight years decreases from October to November and then increases from November to December.
+  
+ * To look further, we can see that the median electricity consumption of the three states is larger in October than in November, and then the median electricity consumption is smaller in November than in December.
+ 
+ * It is also worth mentioning that in October, the median electricity consumption of Arizona is larger than the states with DST; however, in November and December, there is a huge reduction in the electricity consumption in Arizona, and its median electricity consumption even becomes smaller than the states with DST. This provides us with a strong evidence that the DST does not have too much influence on decreasing electricity consumption.
+ 
+ * Based on the information we obtain, For the states with DST and without DST, the changes of both overall differences and the median electricity consumption are very similar. There may also exist weather effect. For example, the temperature of November is lower than that of October, which makes a lot of people stop using air condition. Electricity usage will decrease without any doubt. Thus with the third points, I mentioned above, we can conclude that the DST has a trivial effect on decreasing the electricity consumption.
+
+```{r}
+ggplot(elec_dst_end, aes(x=Month, y=Total_sales, group=State)) +
+  geom_line(aes(color=State)) +
+  geom_point(aes(shape=State, color=State)) +
+  scale_x_discrete(labels = c("Oct","Nov","Dec")) +
+  facet_wrap(~Year) +
+  ggtitle("PCP of Oct, Nov and Dec") + 
+  ylab("Scaled Ave Total Sales") +
+  scale_color_colorblind() +
+  theme_grey(13) +
+  theme(plot.title=element_text(hjust = 0.5))
+```
+
+From the parallel coordinate plot above,
+
+ * For the state without DST, Arizona, the changing pattern of the electricity consumption decreases from October to November and then increases over the eight years. 
+ 
+ * For the state with DST, New Mexico and Oklahoma, the electricity consumption of New Mexico decreases from October to November in 2010, 2011, 2012, 2015, and 2017. The electricity consumption in Oklahoma decrease from October to November in 2012, 2015, 2016 and 2017.
+
+ * Based on the information we obtain, for the state without DST, the electricity consumption always decreases at the end of DST, but for the state with DST, the electricity consumption of these states does not follow a consistent changing pattern at the end of DST over the eight years, which means the electricity consumption may either increase or decrease. we can conclude that the DST may not be useful to reduce electricity consumption.
+
+## VI. Interactive component
+
+[Click Here For the Interactive Plot in Tableau Public](https://public.tableau.com/profile/vincent4689#!/vizhome/GR_5222_FinalProject/GR_5293_Final_Project?publish=yes)
+
+The following is a screenshot of the interactive plot for the car accident dataset in Tableau. 
+
+```{r}
+knitr::include_graphics('Interactive_car_accident.png')
+```
+
+The following is a screenshot of the interactive plot for the electricity consumption dataset in Tableau.
+
+```{r}
+knitr::include_graphics('Interactive_electricity.png')
+```
+
+Besides looking at data in those three states, we are also interested in data in the other 50 states, excluding Hawaii. The reason why we exclude Hawaii is that it doesn't have DST and the state is quite different geographically comparing with other states in the U.S. To make this easier to filter among states and years, we decide to use Tableau for data visualization. 
+
+On our Tableau Story, we have two similar dashboards representing car accident data summary and electricity usage data summary. The map on the top has 50 circles in total with each circle representing a state. The color of the circle indicates the total usage of electricity in the DST starting period, whereas the size of the circle indicates the total usage of electricity in the DST ending period. In addition, the map could also act as a filter for the two parallel coordinate plots below, allowing one to select different states for comparison. However, if the states are too small to select, one could also make the selection via the dropdown "State" filter on the right-hand side of the plot. Lastly, we also have the "Year" filter on the top right corner for us to select the years that we are interested in. 
+
+```{r}
+knitr::include_graphics('Interactive_Finding.png')
+```
+
+Based on the Tableau screenshot above, we found that states in a close latitude range tend to have the similar trend in electricity consumption. For examples, electricity consumptions in IA, IL, IN, OH, and PA tends to decrease from February to April and increase from October to December, and we also spot this with WA, MT, ND, and MN. However, this does not apply for car accident data. 
+
+## VII. Conclusion
+
+From the analysis above, The start and end of DST have varying degree of impact on the number of car accidents and the electricity consumption for each state.
+
+ * For the car accident, the implementation of DST is not supposed to increase the number of car accidents, but the analysis shows that basically, for each year, there is an increasing number of car accidents for a small amount of states during the starting period of DST. During the ending period of DST, this situation may be alleviated, which means the number of car accidents decreases in some degree.
+ 
+ * For the electricity consumption, the implementation of DST may have some trivial impact on decreasing the electricity usage, but such decrement may due to seasonal variation and temperature change.
+
+Although our research shows that DST may not have such significant impacts on the number of car accidents and the consumption of electricity, there are still certain limitations from our research worth noticing:
+
+  * Like we stated at the beganning of the research, due to the data limitation in our research, we failed to obtain the actual car accident on the exact Monday following the DST starting Sunday in March. For future study, we suggest to look at the data recording fatal car accidents. 
+  
+  * As we all know, DST was orginally designed to save electricity. Back then, most of the households' electricity consumptions came from small electric appliance, such as electric bulb. However, nowadays, a main portion of the households' electricity consumptions are generated by much power consuming electric appliance, such as air conditioning and heating. Therefore, we suspect that DST may still save electricity in lighting, but this could be easily offset by increasing demands for cooling and heating. For future study, we could look at eletricity consumptions in residential, commercial, and industrial seperately, and see if our resutls hold for all three areas.  
+
+
+## VIII. Data Source
+
+1. Car Accident (NHTSA): ftp://ftp.nhtsa.dot.gov/fars/
+
+2. Electricity Usage (EIA): https://www.eia.gov/electricity/data.php
+
+## IX. Reference
+
+1. https://www.timeanddate.com/time/dst/daylight-saving-health.html
+
+2. http://mentalfloss.com/article/575331/daylight-saving-time-effects
+
+## X. GitHub Repository
+
+https://github.com/HaoWu2019/GR5293-Final-Project
